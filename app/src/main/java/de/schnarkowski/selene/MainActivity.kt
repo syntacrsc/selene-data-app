@@ -15,7 +15,9 @@ class MainActivity : ComponentActivity() {
         // osmdroid braucht einen User-Agent und einen Cache-Ort
         Configuration.getInstance().apply {
             load(applicationContext, getSharedPreferences("osmdroid", MODE_PRIVATE))
-            userAgentValue = packageName
+            // OSM verlangt einen eindeutigen User-Agent; ein reiner Paketname gilt als
+            // "generisch" und wird blockiert (leere Kacheln).
+            userAgentValue = "SeleneDataApp/0.1 (Android; +https://github.com/syntacrsc/selene-data-app)"
         }
         setContent { SeleneApp(vm) }
     }

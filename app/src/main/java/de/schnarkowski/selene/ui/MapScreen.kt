@@ -40,7 +40,6 @@ import de.schnarkowski.selene.data.Geo
 import de.schnarkowski.selene.data.LatLon
 import de.schnarkowski.selene.data.fmt
 import org.osmdroid.tileprovider.MapTileProviderBasic
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -82,7 +81,14 @@ private fun SeaMap(
     var initialZoomDone by remember { mutableStateOf(false) }
     val mapView = remember {
         MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            // OSM-Kacheln direkt (ohne Umleitung über alte Subdomains)
+            setTileSource(
+                XYTileSource(
+                    "OSM", 0, 19, 256, ".png",
+                    arrayOf("https://tile.openstreetmap.org/"),
+                    "© OpenStreetMap",
+                ),
+            )
             setMultiTouchControls(true)
             controller.setZoom(13.0)
             // OpenSeaMap-Seezeichen als zweite Ebene
