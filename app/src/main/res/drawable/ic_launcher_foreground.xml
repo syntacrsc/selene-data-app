@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Einfaches Segel-Symbol: Großsegel, Vorsegel, Rumpf -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 L54,70 L32,70 Z" />
+    <path
+        android:fillColor="#9FD3FF"
+        android:pathData="M57,34 L57,70 L76,70 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,74 L78,74 L72,82 L36,82 Z" />
+</vector>
