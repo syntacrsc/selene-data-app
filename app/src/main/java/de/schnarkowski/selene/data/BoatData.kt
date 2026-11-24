@@ -26,6 +26,17 @@ data class Battery(
     val power: Double? get() = if (voltage != null && current != null) voltage * current else null
 }
 
+data class Tank(
+    val id: String,
+    val name: String,
+    val type: String,
+    val levelPct: Double?,
+    val capacityL: Double?,
+    val remainingL: Double?,
+)
+
+data class ActiveAlarm(val path: String, val state: String, val message: String)
+
 data class AisTarget(
     val context: String,
     val name: String,
@@ -64,6 +75,10 @@ data class BoatData(
     val batteries: List<Battery> = emptyList(),
     val solarPower: Double? = null,
     val solarMode: String? = null,
+    val solarYieldTodayKWh: Double? = null,
+    val solarYieldYesterdayKWh: Double? = null,
+    val tanks: List<Tank> = emptyList(),
+    val alarms: List<ActiveAlarm> = emptyList(),
     val electricalOther: List<Pair<String, Any?>> = emptyList(),
     val ais: List<AisTarget> = emptyList(),
 ) {
@@ -110,22 +125,51 @@ data class BoatData(
             val battIds = v.keys.filter { it.startsWith("electrical.batteries.") }
                 .map { it.removePrefix("electrical.batteries.").substringBefore(".") }
                 .distinct().sorted()
-            val batteries = battIds.map { id ->
+            val batteries = battIds.filter { batteryNames[it] != "-" }.map { id ->
                 val p = "electrical.batteries.$id"
                 Battery(
                     id = id,
-                    name = batteryNames[id] ?: (v["$p.name"] as? String) ?: defaultBatteryName(id),
+                    name = batteryNames[id] ?: translateName(v["$p.name"] as? String) ?: defaultBatteryName(id),
                     voltage = d("$p.voltage"),
                     current = d("$p.current"),
-                    soc = d("$p.stateOfCharge")?.times(100.0),
-                    timeRemainingH = d("$p.timeRemaining")?.div(3600.0),
+                    soc = (d("$p.capacity.stateOfCharge") ?: d("$p.stateOfCharge"))?.times(100.0),
+                    timeRemainingH = (d("$p.capacity.timeRemaining") ?: d("$p.timeRemaining"))?.div(3600.0),
                     temperatureC = d("$p.temperature")?.minus(273.15),
                 )
-            }
+            }.sortedBy { if (batteryNames.containsKey(it.id) || v.containsKey("electrical.batteries.${it.id}.name")) 0 else 1 }
             val solarPower = v.keys.filter { it.startsWith("electrical.solar.") && it.endsWith(".panelPower") }
                 .mapNotNull { v[it] as? Double }.takeIf { it.isNotEmpty() }?.sum()
-            val solarMode = v.keys.firstOrNull { it.startsWith("electrical.solar.") && it.endsWith(".chargingMode") }
-                ?.let { v[it]?.toString() }
+            val solarMode = v.keys.firstOrNull {
+                it.startsWith("electrical.solar.") && (it.endsWith(".chargingMode") || it.endsWith(".controllerMode"))
+            }?.let { translateMode(v[it]?.toString()) }
+            fun sumJ(suffix: String) = v.keys.filter { it.startsWith("electrical.solar.") && it.endsWith(suffix) }
+                .mapNotNull { v[it] as? Double }.takeIf { it.isNotEmpty() }?.sum()?.div(3_600_000.0)
+
+            // Tanks: tanks.<typ>.<id>.currentLevel (0..1), capacity/remaining in m³
+            val tankKeys = v.keys.filter { it.startsWith("tanks.") }
+                .map { it.split(".") }.filter { it.size >= 4 }
+                .map { it[1] to it[2] }.distinct()
+            val tanks = tankKeys.filter { batteryNames[it.second] != "-" }.map { (type, id) ->
+                val p = "tanks.$type.$id"
+                Tank(
+                    id = id,
+                    name = batteryNames[id] ?: translateName(v["$p.name"] as? String)
+                        ?: translateName(v["electrical.tanks.$id.name"] as? String)
+                        ?: "${tankType(type)} $id",
+                    type = tankType(type),
+                    levelPct = d("$p.currentLevel")?.times(100.0),
+                    capacityL = d("$p.capacity")?.times(1000.0),
+                    remainingL = d("$p.remaining")?.times(1000.0),
+                )
+            }.sortedBy { it.name }
+
+            // Aktive Alarme: notifications.* mit Zustand ungleich normal
+            val alarms = v.entries.filter { it.key.startsWith("notifications.") }.mapNotNull { (k, value) ->
+                val m = value as? Map<*, *> ?: return@mapNotNull null
+                val state = m["state"]?.toString() ?: return@mapNotNull null
+                if (state == "normal" || state == "nominal") null
+                else ActiveAlarm(k.removePrefix("notifications."), state, m["message"]?.toString() ?: k)
+            }
             val electricalOther = v.entries
                 .filter { it.key.startsWith("electrical.") && !it.key.startsWith("electrical.batteries.") }
                 .sortedBy { it.key }
@@ -153,9 +197,42 @@ data class BoatData(
                 batteries = batteries,
                 solarPower = solarPower,
                 solarMode = solarMode,
+                solarYieldTodayKWh = sumJ(".yieldToday"),
+                solarYieldYesterdayKWh = sumJ(".yieldYesterday"),
+                tanks = tanks,
+                alarms = alarms,
                 electricalOther = electricalOther,
                 ais = ais,
             )
+        }
+
+        /** Englische Namen aus dem Cerbo übersetzen. */
+        private fun translateName(n: String?): String? = when (n?.trim()?.lowercase()) {
+            null, "" -> null
+            "house battery" -> "Hausbatterie"
+            "genset battery", "generator battery" -> "Generatorbatterie"
+            "engine battery", "starter battery", "start battery" -> "Motorbatterie"
+            "fresh water port" -> "Frischwasser Bb"
+            "fresh water stb", "fresh water starboard" -> "Frischwasser Stb"
+            else -> n.trim()
+        }
+
+        private fun translateMode(m: String?): String? = when (m?.lowercase()) {
+            null -> null
+            "not charging" -> "lädt nicht"
+            "bulk" -> "Bulk"
+            "absorption" -> "Absorption"
+            "float" -> "Erhaltung"
+            "off" -> "aus"
+            else -> m
+        }
+
+        private fun tankType(t: String) = when (t) {
+            "freshWater" -> "Frischwasser"
+            "wasteWater" -> "Grauwasser"
+            "blackWater" -> "Fäkalien"
+            "fuel" -> "Diesel"
+            else -> t
         }
 
         private fun defaultBatteryName(id: String) = when (id.lowercase()) {
@@ -170,7 +247,7 @@ data class BoatData(
         ): AisTarget {
             val pos = toLatLon(o["navigation.position"])
             val sog = (o["navigation.speedOverGround"] as? Double)?.times(MS_TO_KN)
-            val cogRad = o["navigation.courseOverGroundTrue"] as? Double
+            val cogRad = (o["navigation.courseOverGroundTrue"] as? Double) ?: (o["navigation.headingTrue"] as? Double)
             val mmsi = o["mmsi"]?.toString() ?: ctx.substringAfterLast(":")
             var dist: Double? = null
             var brg: Double? = null

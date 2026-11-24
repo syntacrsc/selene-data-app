@@ -68,6 +68,9 @@ data class AnchorWatch(
     val active: Boolean get() = position != null
 }
 
+/** Zuordnung passend zum Export vom 24.11.2026; "-" blendet doppelte Quellen aus. */
+const val DEFAULT_NAMES = "279=Hausbatterie\n278=Generatorbatterie\n0=Batterie am Solarregler\n1=-\n239=-\n6=-\n7=-"
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("selene", Context.MODE_PRIVATE)
 
@@ -191,7 +194,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         boatHost = prefs.getString("boatHost", null) ?: "einstein:3000",
         theme = runCatching { ThemeMode.valueOf(prefs.getString("theme", null) ?: "") }.getOrDefault(ThemeMode.DARK),
         keepScreenOn = prefs.getBoolean("keepScreenOn", true),
-        batteryNames = prefs.getString("batteryNames", null) ?: "",
+        batteryNames = prefs.getString("batteryNames", null) ?: DEFAULT_NAMES,
     )
 
     private fun saveSettings(s: AppSettings) {

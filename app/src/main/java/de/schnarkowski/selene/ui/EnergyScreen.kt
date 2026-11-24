@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.schnarkowski.selene.data.Battery
 import de.schnarkowski.selene.data.BoatData
+import de.schnarkowski.selene.data.Tank
 import de.schnarkowski.selene.data.fmt
 
 @Composable
@@ -45,9 +46,18 @@ fun EnergyScreen(b: BoatData, wide: Boolean) {
             if (wide) 3 else 2,
             listOf<@Composable (Modifier) -> Unit>(
                 { m -> ValueTile("Solar", fmt(b.solarPower, 0), "W", m) },
-                { m -> ValueTile("Solar-Modus", b.solarMode?.replaceFirstChar { it.uppercase() } ?: "--", "", m) },
+                { m -> ValueTile("Solarregler", b.solarMode?.replaceFirstChar { it.uppercase() } ?: "--", "", m) },
+                { m -> ValueTile("Ertrag heute", fmt(b.solarYieldTodayKWh, 2), "kWh", m) },
+                { m -> ValueTile("Ertrag gestern", fmt(b.solarYieldYesterdayKWh, 2), "kWh", m) },
             ),
         )
+
+        if (b.tanks.isNotEmpty()) {
+            SectionTitle("Tanks")
+            val tankTiles: List<@Composable (Modifier) -> Unit> =
+                b.tanks.map { t -> @Composable { m: Modifier -> TankCard(t, m) } }
+            TileGrid(if (wide) 3 else 2, tankTiles)
+        }
 
         if (b.electricalOther.isNotEmpty()) {
             SectionTitle("Weitere Werte (Quattro, Lader, …)")
@@ -61,7 +71,7 @@ fun EnergyScreen(b: BoatData, wide: Boolean) {
             }
         }
         Text(
-            "Batterienamen lassen sich in den Einstellungen zuordnen (z. B. 279=Hausbatterie).",
+            "Namen von Batterien und Tanks lassen sich in den Einstellungen zuordnen (z. B. 279=Hausbatterie, \"-\" blendet aus).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 12.dp),
@@ -107,6 +117,37 @@ private fun BatteryCard(bat: Battery, modifier: Modifier) {
 }
 
 @Composable
+private fun TankCard(t: Tank, modifier: Modifier) {
+    val inst = LocalInstrumentColors.current
+    val color = when {
+        t.levelPct == null -> inst.dim
+        t.levelPct < 15 -> inst.port
+        t.levelPct < 30 -> inst.warn
+        else -> inst.accent
+    }
+    Column(
+        modifier
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+            .padding(12.dp),
+    ) {
+        Text(t.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+        Text(
+            if (t.levelPct != null) "${fmt(t.levelPct, 0)} %" else "--",
+            fontSize = 28.sp, fontWeight = FontWeight.Medium, color = color,
+        )
+        PercentBar(t.levelPct, color, Modifier.padding(vertical = 6.dp))
+        Text(
+            buildString {
+                t.remainingL?.let { append("${fmt(it, 0)} l") }
+                t.capacityL?.let { append(if (isEmpty()) "" else " von "); append("${fmt(it, 0)} l") }
+            }.ifEmpty { "–" },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun Small(label: String, value: String) {
     Column {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -140,12 +181,26 @@ fun formatAny(path: String, v: Any?): String = when (v) {
     null -> "–"
     is Double -> when {
         path.endsWith("temperature") -> "${fmt(v - 273.15)} °C"
+        path.contains("angle", ignoreCase = true) || path.contains("heading", ignoreCase = true) ||
+            path.contains("course", ignoreCase = true) || path.endsWith("magneticVariation") ||
+            path.endsWith("setTrue") -> "${fmt(Math.toDegrees(v), 1)}°"
+        path.contains("speed", ignoreCase = true) || path.endsWith("drift") -> "${fmt(v * 1.943844, 2)} kn"
+        path.startsWith("tanks.") && (path.endsWith("capacity") || path.endsWith("remaining")) -> "${fmt(v * 1000, 0)} l"
+        path.endsWith("currentLevel") -> "${fmt(v * 100, 0)} %"
+        path.contains("yield", ignoreCase = true) || path.endsWith("Energy") -> "${fmt(v / 3_600_000.0, 2)} kWh"
+        path.startsWith("environment.depth") || path.startsWith("design.") || path.startsWith("sensors.") -> "${fmt(v, 2)} m"
+        path.endsWith(".log") || path == "navigation.log" -> "${fmt(v / 1852.0, 1)} sm"
         path.endsWith("voltage") -> "${fmt(v, 2)} V"
         path.endsWith("current") -> "${fmt(v, 1)} A"
         path.endsWith("power") || path.endsWith("Power") -> "${fmt(v, 0)} W"
         path.endsWith("stateOfCharge") || path.endsWith("Ratio") -> "${fmt(v * 100, 0)} %"
         else -> fmt(v, 3)
     }
-    is Map<*, *> -> v.entries.joinToString(", ") { "${it.key}=${if (it.value is Double) fmt(it.value as Double, 5) else it.value}" }
+    is Map<*, *> -> when {
+        v.containsKey("roll") -> "Roll ${fmt(Math.toDegrees(v["roll"] as? Double ?: 0.0), 1)}°, " +
+            "Pitch ${fmt(Math.toDegrees(v["pitch"] as? Double ?: 0.0), 1)}°"
+        v.containsKey("message") && v.containsKey("state") -> "${v["state"]}: ${v["message"]}"
+        else -> v.entries.joinToString(", ") { "${it.key}=${if (it.value is Double) fmt(it.value as Double, 5) else it.value}" }
+    }
     else -> v.toString()
 }

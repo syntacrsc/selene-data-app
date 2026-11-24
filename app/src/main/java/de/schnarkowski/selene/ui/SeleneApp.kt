@@ -158,6 +158,17 @@ fun SeleneApp(vm: MainViewModel) {
                     }
                     Column(Modifier.weight(1f).fillMaxSize()) {
                         if (status.state != ConnState.VERBUNDEN) ConnBanner(status.state, status.message)
+                        boat.alarms.forEach { a ->
+                            Text(
+                                "⚠ ${a.message} (${a.state})",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(LocalInstrumentColors.current.port)
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             when (tab) {
                                 0 -> SailScreen(boat, wide)

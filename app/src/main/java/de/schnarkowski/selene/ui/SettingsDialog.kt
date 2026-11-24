@@ -65,7 +65,7 @@ fun SettingsDialog(current: AppSettings, onDismiss: () -> Unit, onSave: (AppSett
                     Switch(checked = s.keepScreenOn, onCheckedChange = { s = s.copy(keepScreenOn = it) })
                 }
                 Text(
-                    "Batterienamen",
+                    "Namen (Batterien, Tanks)",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 12.dp),
@@ -74,7 +74,7 @@ fun SettingsDialog(current: AppSettings, onDismiss: () -> Unit, onSave: (AppSett
                     value = s.batteryNames,
                     onValueChange = { s = s.copy(batteryNames = it) },
                     label = { Text("Kennung=Name, je Zeile") },
-                    supportingText = { Text("Kennung siehe Seite „Daten“, z. B. 279=Hausbatterie") },
+                    supportingText = { Text("Kennung siehe Seite „Daten“, z. B. 279=Hausbatterie; \"-\" blendet aus") },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                 )
